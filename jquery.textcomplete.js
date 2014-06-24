@@ -1,9 +1,10 @@
 /*!
  * jQuery.textcomplete.js
  *
- * Repositiory: https://github.com/yuku-t/jquery-textcomplete
+ * Repositiory: https://github.com/mbarbu/jquery-textcomplete-div
  * License:     MIT
  * Author:      Yuku Takahashi
+ * Changes:     Marius Barbu
  */
 
 ;(function ($) {
@@ -264,43 +265,53 @@
         }
       },
 
+      pasteHtml: function (html) {
+          var sel, range;
+          if (window.getSelection) {
+              // IE9 and non-IE
+              sel = window.getSelection();
+              if (sel.getRangeAt && sel.rangeCount) {
+                  range = sel.getRangeAt(0);
+                  range.deleteContents();
+
+                  // Range.createContextualFragment() would be useful here but is
+                  // only relatively recently standardized and is not supported in
+                  // some browsers (IE9, for one)
+                  var el = document.createElement("div");
+                  el.innerHTML = html;
+                  var frag = document.createDocumentFragment(), node, lastNode;
+                  while ( (node = el.firstChild) ) {
+                      lastNode = frag.appendChild(node);
+                  }
+                  range.insertNode(frag);
+
+                  // Preserve the selection
+                  if (lastNode) {
+                      range = range.cloneRange();
+                      range.setStartAfter(lastNode);
+                      range.collapse(true);
+                      sel.removeAllRanges();
+                      sel.addRange(range);
+                  }
+              }
+          } else if (document.selection && document.selection.type != "Control") {
+              // IE < 9
+              document.selection.createRange().pasteHTML(html);
+          }
+      },
+
       onSelect: function (value) {
-        var pre, post, newSubStr, sel, range, selection;
+        var pre, post, newSubStr, sel, range, selection, newHtml, ht;
         pre = this.getTextFromHeadToCaret();
 
-        if (this.el.contentEditable == 'true') {
-          sel = window.getSelection();
-          range = sel.getRangeAt(0);
-          selection = range.cloneRange();
-          selection.selectNodeContents(range.startContainer);
-          var content = selection.toString();
-          post = content.substring(range.startOffset);
-        } else {
-          post = this.el.value.substring(this.el.selectionEnd);
-        }
+        sel = window.getSelection();
+        range = sel.getRangeAt(0);
 
         newSubStr = this.strategy.replace(value);
-        
-        if ($.isArray(newSubStr)) {
-          post = newSubStr[1] + post;
-          newSubStr = newSubStr[0];
-        }
-
-        pre = pre.replace(this.strategy.match, newSubStr);
-        
-        if (this.el.contentEditable == 'true') {
-          range.selectNodeContents(range.startContainer);
-          range.deleteContents();
-          var node = document.createTextNode(pre + post);
-          range.insertNode(node);
-          range.setStart(node, pre.length);
-          range.collapse(true);
-          sel.removeAllRanges();
-          sel.addRange(range);
-        } else {
-          this.$el.val(pre + post);
-          this.el.selectionStart = this.el.selectionEnd = pre.length; 
-        }
+        newHtml = pre.replace(this.strategy.match, newSubStr);
+        range.selectNodeContents(range.startContainer);
+        range.deleteContents();
+        this.pasteHtml(newHtml);
 
         this.$el.trigger('change')
                 .trigger('textComplete:select', value);
@@ -393,6 +404,7 @@
           $node = $(node);
           position = $node.offset();
           position.top += $node.height() - this.$el.offset().top;
+          $node.remove();
         }
         dir = this.$el.attr('dir') || this.$el.css('direction');
         if (dir === 'rtl') { position.left -= this.listView.$el.width(); }
@@ -403,7 +415,7 @@
         var text, selectionEnd, range;
         if (this.el.contentEditable == 'true') {
           if (window.getSelection) {
-            // IE9+ and non-IE            
+            // IE9+ and non-IE
             var range = window.getSelection().getRangeAt(0);
             var selection = range.cloneRange();
             selection.selectNodeContents(range.startContainer);
@@ -457,9 +469,6 @@
       this.$el = $el;
       this.index = 0;
       this.completer = completer;
-      if (completer.option.listPosition) {
-        this.setPosition = completer.option.listPosition;
-      }
 
       this.$el.on('mousedown.textComplete', 'li.textcomplete-item',
                   $.proxy(this.onClick, this));
@@ -472,7 +481,7 @@
         var html, i, l, index, val, str;
 
         html = '';
-        
+
         if(this.strategy.header) {
           if ($.isFunction(this.strategy.header)) {
             str = this.strategy.header(data);
